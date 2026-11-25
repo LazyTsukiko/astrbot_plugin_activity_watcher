@@ -1,0 +1,142 @@
+{
+  "retention_days": {
+    "description": "活动记录保留天数（滚动删除）",
+    "type": "int",
+    "default": 3
+  },
+  "summarize_cron": {
+    "description": "每日记忆总结时间（HH:MM）",
+    "type": "string",
+    "default": "04:30"
+  },
+  "focus_users": {
+    "description": "重点追踪用户列表（完整ID，如 aiocqhttp:123456）。为空则追踪所有人",
+    "type": "list",
+    "default": []
+  },
+  "record_max_text_len": {
+    "description": "单条消息最大记录长度",
+    "type": "int",
+    "default": 500
+  },
+  "enable_prompt_inject": {
+    "description": "是否启用 on_llm_request 活动注入",
+    "type": "bool",
+    "default": true
+  },
+  "inject_stat_hours": {
+    "description": "注入的活动统计窗口（小时），更早信息由 agent 按需查询",
+    "type": "int",
+    "default": 24
+  },
+  "inject_max_recent_items": {
+    "description": "注入的最近活动条数",
+    "type": "int",
+    "default": 10
+  },
+  "context_window": {
+    "description": "查询上下文时每条发言附带的前后消息条数",
+    "type": "int",
+    "default": 5
+  },
+  "late_night_hours": {
+    "description": "深夜时段（H-H，24小时制）",
+    "type": "string",
+    "default": "0-5"
+  },
+  "care_keywords": {
+    "description": "健康/情绪关心关键词（零成本硬匹配优先命中）",
+    "type": "list",
+    "default": ["生病", "发烧", "感冒", "难受", "医院", "不舒服", "头疼"]
+  },
+  "semantic_care_detection": {
+    "description": "对目标用户消息启用轻量语义检测（关键词未命中时用 LLM 识别健康状况与话题收口）。目标用户：focus_users 白名单，为空时仅私聊对端",
+    "type": "bool",
+    "default": true
+  },
+  "semantic_batch_max": {
+    "description": "语义检测批量阈值：缓冲消息达到该条数立即批量判断",
+    "type": "int",
+    "default": 10
+  },
+  "semantic_batch_interval": {
+    "description": "语义检测缓冲冲刷间隔（秒）：未达批量阈值的消息最多延迟该时间后判断",
+    "type": "int",
+    "default": 180
+  },
+  "close_keywords": {
+    "description": "话题收口关键词（用户表达好转/结束）",
+    "type": "list",
+    "default": ["好多了", "不疼了", "已经睡了", "退烧了", "没事了"]
+  },
+  "enable_trigger_engine": {
+    "description": "启用主动触发引擎（时效性主动触达）",
+    "type": "bool",
+    "default": true
+  },
+  "trigger_check_interval": {
+    "description": "触发引擎扫描间隔（秒）",
+    "type": "int",
+    "default": 300
+  },
+  "urgent_expire_minutes": {
+    "description": "紧急事件（深夜未睡）失效时间（分钟）",
+    "type": "int",
+    "default": 30
+  },
+  "health_retry_hours": {
+    "description": "健康类话题重复触达间隔（小时），直到话题收口",
+    "type": "int",
+    "default": 24
+  },
+  "max_repeat_triggers": {
+    "description": "同一事件最多重复触达次数（超过后自动收口，防无限循环；兴趣类固定为2）",
+    "type": "int",
+    "default": 7
+  },
+  "interest_start_delay_hours": {
+    "description": "兴趣由头首次触达延迟（小时），放宽触达时机",
+    "type": "int",
+    "default": 6
+  },
+  "interest_retry_hours": {
+    "description": "兴趣类话题重复触达间隔（小时）",
+    "type": "int",
+    "default": 12
+  },
+  "auto_close_days": {
+    "description": "话题无更新自动关闭天数",
+    "type": "int",
+    "default": 7
+  },
+  "quiet_hours": {
+    "description": "免打扰时段（H-H，深夜关心事件豁免）",
+    "type": "string",
+    "default": "1-8"
+  },
+  "persona_hint": {
+    "description": "兜底生成时的人设基调提示（agent 模式下自动继承完整人设）",
+    "type": "string",
+    "default": "温柔、自然、不过度打扰"
+  },
+  "push_to_livingmemory": {
+    "description": "每日摘要推送到 livingmemory",
+    "type": "bool",
+    "default": true
+  },
+  "livingmemory_api": {
+    "description": "livingmemory External API 地址",
+    "type": "string",
+    "default": "http://127.0.0.1:7801"
+  },
+  "livingmemory_api_key": {
+    "description": "livingmemory External API Key（/lmem apikey 生成）。为空则不推送",
+    "type": "string",
+    "default": ""
+  },
+  "enable_companion_provider": {
+    "description": "集成 private_companion（注册外部记忆 Provider）",
+    "type": "bool",
+    "default": true
+  }
+}
