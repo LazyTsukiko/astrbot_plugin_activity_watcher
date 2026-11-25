@@ -13,6 +13,7 @@ import sqlite3
 import time
 import traceback
 from datetime import datetime, timedelta
+from typing import Optional
 
 from astrbot.api.star import Context, Star, register
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
@@ -43,7 +44,7 @@ class ActivityWatcher(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
         self.cfg = config or {}
-        self._db: sqlite3.Connection | None = None
+        self._db: Optional[sqlite3.Connection] = None
         self._db_lock = asyncio.Lock()
         self._bg_tasks: set[asyncio.Task] = set()
         self._inject_throttle: dict[str, float] = {}  # umo -> last inject ts
@@ -488,7 +489,7 @@ class ActivityWatcher(Star):
         except Exception:
             pass
 
-    async def _llm_text(self, prompt: str) -> str | None:
+    async def _llm_text(self, prompt: str) -> Optional[str]:
         """provider 直调（不经主链，不触发其他插件钩子）"""
         try:
             provider = self.context.get_using_provider()
@@ -577,7 +578,7 @@ class ActivityWatcher(Star):
                 self._exec("UPDATE care_events SET next_retry_at=? WHERE id=?",
                            (now + self._cfg("trigger_check_interval", 300), ev["id"]))
 
-    def _private_umo(self, uid: str) -> str | None:
+    def _private_umo(self, uid: str) -> Optional[str]:
         """取该用户私聊会话 umo：优先用记录到的真实私聊 umo（最可靠），
         否则由 platform:FriendMessage:用户ID 直接构造。
         返回 None 表示平台不支持私聊直发。"""
@@ -630,7 +631,7 @@ class ActivityWatcher(Star):
         except Exception:
             return False
 
-    async def _generate_greeting(self, ev) -> str | None:
+    async def _generate_greeting(self, ev) -> Optional[str]:
         ctx_snippet = self._render_activities(
             self._exec("SELECT * FROM activities WHERE user_id=? ORDER BY at DESC LIMIT 5",
                        (ev["user_id"],), fetch=True), with_context=False)
@@ -676,7 +677,7 @@ class ActivityWatcher(Star):
             lines.append(line)
         return "\n".join(lines)
 
-    def _render_context(self, item, n: int | None = None) -> str:
+    def _render_context(self, item, n: Optional[int] = None) -> str:
         n = n or self._cfg("context_window", 5)
         rows = self._exec(
             "SELECT * FROM activities WHERE umo=? AND at<=? ORDER BY at DESC LIMIT ?",
@@ -744,7 +745,7 @@ class ActivityWatcher(Star):
     # ------------------------------------------------------------------
     @filter.llm_tool(name="query_user_activity")
     async def query_user_activity(self, event: AstrMessageEvent,
-                                  user_id: str | None = None,
+                                  user_id: Optional[str] = None,
                                   hours: int = 72, limit: int = 20,
                                   with_context: bool = True):
         """查询某位用户近期的活动记录（发言时间、地点、内容，可带上下文语境）。
@@ -764,7 +765,7 @@ class ActivityWatcher(Star):
         yield event.plain_result(self._render_activities(rows, with_context=bool(with_context)))
 
     @filter.llm_tool(name="suggest_topic")
-    async def suggest_topic(self, event: AstrMessageEvent, user_id: str | None = None):
+    async def suggest_topic(self, event: AstrMessageEvent, user_id: Optional[str] = None):
         """为主动会话寻找话题由头：基于目标用户未关闭的关心话题和待处理事件，给出话题建议。
         Args:
             user_id: 目标用户的完整ID。不填则查询当前会话用户
@@ -806,7 +807,7 @@ class ActivityWatcher(Star):
 
     @filter.permission_type(PermissionType.ADMIN)
     @filter.command("aw_close")
-    async def cmd_close(self, event: AstrMessageEvent, user_id: str | None = None):
+    async def cmd_close(self, event: AstrMessageEvent, user_id: Optional[str] = None):
         """手动关闭某用户的话题。用法: /aw_close <platform:uid>"""
         uid = user_id or f"{event.get_platform_name()}:{event.get_sender_id()}"
         rows = self._exec("SELECT id FROM topics WHERE user_id=? AND status='open'", (uid,), fetch=True)
