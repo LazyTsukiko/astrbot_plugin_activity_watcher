@@ -4,3 +4,7 @@ help: 让 agent 感知目标用户在所有群和私聊的活动，并基于活�
 version: v1.0.0
 author: LazyTsukiko
 repo: https://github.com/LazyTsukiko/astrbot_plugin_activity_watcher
+license: MIT
+astrbot_version: ">=3.4.0"
+tags: [生活助手]
+
