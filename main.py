@@ -750,10 +750,10 @@ class ActivityWatcher(Star):
                                   with_context: bool = True):
         """查询某位用户近期的活动记录（发言时间、地点、内容，可带上下文语境）。
         Args:
-            user_id: 目标用户的完整ID（platform:数字号）。不填则查询当前会话用户
-            hours: 查询最近多少小时的活动，默认72
-            limit: 最多返回多少条，默认20
-            with_context: 是否附带每条发言前后的对话上下文，默认true
+            user_id (str): 目标用户的完整ID（platform:数字号）。不填则查询当前会话用户
+            hours (int): 查询最近多少小时的活动，默认72
+            limit (int): 最多返回多少条，默认20
+            with_context (bool): 是否附带每条发言前后的对话上下文，默认true
         """
         uid = user_id or f"{event.get_platform_name()}:{event.get_sender_id()}"
         rows = self._exec(
@@ -768,7 +768,7 @@ class ActivityWatcher(Star):
     async def suggest_topic(self, event: AstrMessageEvent, user_id: Optional[str] = None):
         """为主动会话寻找话题由头：基于目标用户未关闭的关心话题和待处理事件，给出话题建议。
         Args:
-            user_id: 目标用户的完整ID。不填则查询当前会话用户
+            user_id (str): 目标用户的完整ID。不填则查询当前会话用户
         """
         uid = user_id or f"{event.get_platform_name()}:{event.get_sender_id()}"
         topics = self._exec(
