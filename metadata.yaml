@@ -1,7 +1,7 @@
 name: astrbot_plugin_activity_watcher
 desc: 用户活动追踪：跨群/私聊活动感知、每日记忆沉淀、时效性主动关心与话题由头
 help: 让 agent 感知目标用户在所有群和私聊的活动，并基于活动进行主动关心与话题搜索
-version: v1.0.0
+version: 1.0.0
 author: LazyTsukiko
 repo: https://github.com/LazyTsukiko/astrbot_plugin_activity_watcher
 license: MIT
