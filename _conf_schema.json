@@ -39,6 +39,11 @@
     "type": "int",
     "default": 5
   },
+  "greeting_history_limit": {
+    "description": "主动问候生成时附带最近多少条私聊会话历史（含 agent 回复）",
+    "type": "int",
+    "default": 10
+  },
   "late_night_hours": {
     "description": "深夜时段（H-H，24小时制）",
     "type": "string",

@@ -193,6 +193,37 @@ class ActivityWatcher(Star):
                 self._detect_care(event, uid, message_str, is_private)
                 self._check_topic_close(uid, message_str)
 
+    @filter.after_message_sent()
+    async def on_message_sent(self, event: AstrMessageEvent):
+        """记录机器人发出的消息，使会话历史成为完整对话（含 agent 回复）"""
+        if not self._ready:
+            return
+        try:
+            umo = getattr(event, "unified_msg_origin", None)
+            if not umo:
+                return
+            result = event.get_result()
+            if result is None:
+                return
+            chain = getattr(result, "chain", None) or []
+            texts = [getattr(c, "text", "") for c in chain
+                     if getattr(c, "type", "") == "Plain" and getattr(c, "text", "")]
+            if not texts:
+                return
+            platform = event.get_platform_name()
+            is_private = event.is_private_chat() if hasattr(event, "is_private_chat") \
+                else not bool(event.get_group_id())
+            self_id = event.get_self_id()
+            uid = f"{platform}:{self_id}" if self_id else f"{platform}:bot"
+            self._exec(
+                "INSERT INTO activities(user_id,umo,is_private,platform,group_id,sender_name,text,at)"
+                " VALUES(?,?,?,?,?,?,?,?)",
+                (uid, umo, int(is_private), platform, event.get_group_id(),
+                 "assistant", " ".join(texts)[:self._cfg("record_max_text_len", 500)],
+                 time.time()))
+        except Exception:
+            pass
+
     def _focus_users(self) -> list:
         return self._cfg("focus_users", []) or []
 
@@ -643,6 +674,17 @@ class ActivityWatcher(Star):
         ctx_snippet = self._render_activities(
             self._exec("SELECT * FROM activities WHERE user_id=? ORDER BY at DESC LIMIT 5",
                        (ev["user_id"],), fetch=True), with_context=False)
+        # 最近私聊会话历史（完整对话，含 agent 回复）
+        chat_history = ""
+        priv_umo = self._private_umo(ev["user_id"])
+        if priv_umo:
+            n = self._cfg("greeting_history_limit", 10)
+            rows = self._exec(
+                "SELECT * FROM activities WHERE umo=? ORDER BY at DESC LIMIT ?",
+                (priv_umo, n), fetch=True)
+            if rows:
+                chat_history = self._render_activities(list(reversed(rows)),
+                                                       with_context=False)
         # 加载该会话绑定的 agent 人设，保证主动消息与平时说话风格一致
         persona_text = None
         try:
@@ -659,9 +701,11 @@ class ActivityWatcher(Star):
             else f"人设基调：{self._cfg('persona_hint', '温柔、自然、不过度打扰')}"
         # 截断过长人设，防 prompt 膨胀
         persona_block = persona_block[:2000]
+        history_block = f"\n最近你们（你=assistant）的私聊对话，注意延续之前的语气和话题：\n{chat_history}\n" \
+            if chat_history else ""
         prompt = (
             f"你是用户的陪伴者。以下是你必须遵循的人设：\n{persona_block}\n\n"
-            f"用户近况：{ev['detail']}。\n近期活动：\n{ctx_snippet}\n"
+            f"用户近况：{ev['detail']}。\n近期活动：\n{ctx_snippet}\n{history_block}\n"
             f"请严格以该人设的口吻，写一句自然、简短的问候/关心（不超过 60 字），"
             f"直接输出内容，不要解释、不要出戏：")
         return await self._llm_text(prompt)
