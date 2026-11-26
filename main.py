@@ -187,20 +187,24 @@ class ActivityWatcher(Star):
         if random.random() < 0.02:
             cutoff = time.time() - self._cfg("retention_days", 3) * 86400
             self._exec("DELETE FROM activities WHERE at < ?", (cutoff,))
-        # 目标用户检测（关心事件 + 话题收口）
-        if self._is_focus(uid):
-            self._detect_care(event, uid, message_str, is_private)
-            self._check_topic_close(uid, message_str)
+        # 关心事件检测 + 话题收口：仅白名单非空时启用（为空 = 不做任何主动发送）
+        if self._focus_users():
+            if self._is_focus(uid):
+                self._detect_care(event, uid, message_str, is_private)
+                self._check_topic_close(uid, message_str)
+
+    def _focus_users(self) -> list:
+        return self._cfg("focus_users", []) or []
 
     def _is_semantic_target(self, event, uid: str, is_private: bool) -> bool:
         """语义检测只针对目标用户，控制成本：
-        focus_users 非空 → 仅白名单用户；为空 → 仅私聊对端用户"""
+        focus_users 非空 → 仅白名单用户；为空 → 不做语义检测也不主动发送"""
         if not self._cfg("semantic_care_detection", True):
             return False
-        focus = self._cfg("focus_users", []) or []
-        if focus:
-            return uid in focus or any(uid.endswith(f":{u}") for u in focus)
-        return is_private
+        focus = self._focus_users()
+        if not focus:
+            return False
+        return uid in focus or any(uid.endswith(f":{u}") for u in focus)
 
     async def _semantic_check(self, event, uid: str, text: str):
         """将目标用户消息入队批量语义缓冲（时效要求不高，攒批降低调用成本）"""
@@ -275,9 +279,9 @@ class ActivityWatcher(Star):
                 pass
 
     def _is_focus(self, uid: str) -> bool:
-        focus = self._cfg("focus_users", []) or []
+        focus = self._focus_users()
         if not focus:
-            return True  # 空白名单=追踪所有人
+            return False  # 为空时不追踪任何人的主动行为
         return uid in focus or any(uid.endswith(f":{u}") for u in focus)
 
     # ------------------------------------------------------------------
@@ -529,6 +533,10 @@ class ActivityWatcher(Star):
 
     async def _check_triggers(self):
         now = time.time()
+        # 白名单为空：不做任何主动发送，直接清理未触达的 pending 事件
+        if not self._focus_users():
+            self._exec("UPDATE care_events SET status='closed' WHERE status='pending'")
+            return
         # 过期的 urgent 作废
         self._exec(
             "UPDATE care_events SET status='closed' WHERE urgency='urgent'"
@@ -635,10 +643,27 @@ class ActivityWatcher(Star):
         ctx_snippet = self._render_activities(
             self._exec("SELECT * FROM activities WHERE user_id=? ORDER BY at DESC LIMIT 5",
                        (ev["user_id"],), fetch=True), with_context=False)
+        # 加载该会话绑定的 agent 人设，保证主动消息与平时说话风格一致
+        persona_text = None
+        try:
+            pm = getattr(self.context, "persona_manager", None)
+            if pm is not None:
+                persona = await pm.get_default_persona_v3(ev["umo"])
+                persona_text = getattr(persona, "system_prompt", None) or (
+                    getattr(persona, "persona", None) if not isinstance(persona, dict) else None)
+                if isinstance(persona_text, dict):
+                    persona_text = persona_text.get("system_prompt")
+        except Exception:
+            persona_text = None
+        persona_block = persona_text.strip() if persona_text and persona_text.strip() \
+            else f"人设基调：{self._cfg('persona_hint', '温柔、自然、不过度打扰')}"
+        # 截断过长人设，防 prompt 膨胀
+        persona_block = persona_block[:2000]
         prompt = (
-            f"你是用户的陪伴者（人设基调：{self._cfg('persona_hint', '温柔、自然、不过度打扰')}）。\n"
+            f"你是用户的陪伴者。以下是你必须遵循的人设：\n{persona_block}\n\n"
             f"用户近况：{ev['detail']}。\n近期活动：\n{ctx_snippet}\n"
-            f"请写一句自然、简短的问候/关心（不超过 60 字），直接输出内容，不要解释：")
+            f"请严格以该人设的口吻，写一句自然、简短的问候/关心（不超过 60 字），"
+            f"直接输出内容，不要解释、不要出戏：")
         return await self._llm_text(prompt)
 
     # ------------------------------------------------------------------
