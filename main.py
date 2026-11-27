@@ -425,6 +425,13 @@ class ActivityWatcher(Star):
             " FROM activities WHERE at>=? GROUP BY user_id HAVING c>0", (day_start,), fetch=True)
         if not rows:
             return
+        # 白名单非空时，摘要仅针对白名单用户（与主动行为范围保持一致）
+        focus = self._focus_users()
+        if focus:
+            rows = [r for r in rows if self._is_focus(r["user_id"])]
+            if not rows:
+                logger.info("[activity_watcher] 每日摘要：当天无白名单用户活动，跳过")
+                return
         # 每个目标用户生成摘要（最多处理 20 人，防开销）
         logger.info(f"[activity_watcher] 每日摘要：{len(rows)} 个用户有待总结")
         for r in rows[:20]:
