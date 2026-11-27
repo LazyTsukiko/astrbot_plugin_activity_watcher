@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from astrbot.api.star import Context, Star, register
+from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
 from astrbot.api.event.filter import EventMessageType, PermissionType
 from astrbot.api.message_components import Plain
@@ -67,8 +68,7 @@ class ActivityWatcher(Star):
         if self._cfg("enable_trigger_engine", True):
             self._spawn(self._trigger_loop())
         self._ready = True
-        logger = getattr(self.context, "logger", None) or print
-        logger("[activity_watcher] 初始化完成")
+        logger.info("[activity_watcher] 初始化完成")
 
     async def terminate(self):
         self._ready = False
@@ -259,12 +259,13 @@ class ActivityWatcher(Star):
             msgs = "\n".join(f"{i+1}. {m['text'][:150]}"
                              for i, m in enumerate(buf[-self._cfg("semantic_batch_max", 10):]))
             prompt = (
-                "以下是某用户的一组连续消息（按时间顺序），请整体分析后输出 JSON（不要其他文字）：\n"
+                "分析这组用户消息，输出 JSON（不要其他文字）：\n"
                 '{"care": "health"或"none", "detail": "若care为health，用不超过30字概括其状况，否则留空", '
                 '"close_topic_ids": [已自然结束的话题编号数组]}\n'
-                "care=health 的标准：消息中表达身体不适、生病、就医、情绪低落需要关心"
-                "（不含关键词也能识别，如「头有点晕」「去看了医生」）。\n"
-                "close_topic_ids 的标准：用户明确表达某话题已好转/结束/不再需要关心。\n\n"
+                "care=health 的标准：用户表达【自己的】身体不适、生病、就医、情绪低落需要关心"
+                "（不含关键词也能识别，如「头有点晕」「去看了医生」）。"
+                "特别注意：如果消息是在谈论别人（他人康复、别人的病情、转述第三方的状况），care 必须为 none。\n"
+                "close_topic_ids 的标准：用户明确表达【自己的】某话题已好转/结束/不再需要关心。\n\n"
                 f"进行中话题：\n{topic_desc}\n\n用户消息组：\n{msgs}")
             ans = await self._llm_text(prompt)
             if not ans:
@@ -408,16 +409,15 @@ class ActivityWatcher(Star):
                 target = now.replace(hour=h, minute=m, second=0, microsecond=0)
                 if target <= now:
                     target += timedelta(days=1)
+                logger.info(f"[activity_watcher] 下次每日摘要时间: {target}")
                 await asyncio.sleep((target - now).total_seconds() + random.uniform(0, 60))
                 await self._run_daily_summary()
-                await asyncio.sleep(86400)  # 之后逐日
             except asyncio.CancelledError:
                 raise
             except Exception:
-                await asyncio.sleep(600)
+                logger.error(f"[activity_watcher] 每日摘要异常: {traceback.format_exc()}")
 
     async def _run_daily_summary(self):
-        date_str = datetime.now().strftime("%Y-%m-%d")
         day_start = datetime.now().replace(hour=0, minute=0, second=0,
                                            microsecond=0).timestamp()
         rows = self._exec(
@@ -426,6 +426,7 @@ class ActivityWatcher(Star):
         if not rows:
             return
         # 每个目标用户生成摘要（最多处理 20 人，防开销）
+        logger.info(f"[activity_watcher] 每日摘要：{len(rows)} 个用户有待总结")
         for r in rows[:20]:
             uid = r["user_id"]
             texts = self._exec(
@@ -440,6 +441,7 @@ class ActivityWatcher(Star):
                 '没有值得主动提的就给空数组"]}\n\n' + joined)
             ans = await self._llm_text(prompt)
             if not ans:
+                logger.warning(f"[activity_watcher] 摘要 LLM 调用失败: {uid}")
                 continue
             summary, interests = None, []
             try:
@@ -456,6 +458,7 @@ class ActivityWatcher(Star):
             # 顺带 LLM 复核话题收口
             await self._review_open_topics(uid, summary)
             self._save_summary(uid, summary)
+            logger.info(f"[activity_watcher] 摘要已保存: {uid}")
             if self._cfg("push_to_livingmemory", True):
                 await self._push_livingmemory(uid, summary)
 
@@ -921,6 +924,16 @@ class ActivityWatcher(Star):
 
     def _companion_is_active(self):
         return self._ready
+
+
+    @filter.permission_type(PermissionType.ADMIN)
+    @filter.command("aw_summarize")
+    async def cmd_summarize(self, event: AstrMessageEvent):
+        """手动立即执行一次每日摘要（管理员，用于调试）"""
+        yield event.plain_result("开始执行每日摘要，请稍后…")
+        await self._run_daily_summary()
+        n = self._exec("SELECT COUNT(*) c FROM summaries").fetchone()[0]
+        yield event.plain_result(f"执行完毕，当前共有 {n} 条摘要。")
 
 
 # 兼容部分 AstrBot 版本的 logger 导入
